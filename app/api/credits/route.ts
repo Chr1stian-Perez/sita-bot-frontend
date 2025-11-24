@@ -1,40 +1,33 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { getUserCreditsInfo } from "@/lib/aws/rds"
-import { validateTokenWithCognito } from "@/lib/auth"
+import { NextRequest, NextResponse } from "next/server"
 
-export async function GET(request: NextRequest) {
+const BACKEND_URL = process.env.BACKEND_URL || "http://10.0.2.93:8000"
+
+export async function GET(req: NextRequest) {
   try {
-    const authHeader = request.headers.get("authorization")
-    if (!authHeader?.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    console.log("[Frontend API] Fetching credits from backend...")
+    const token = req.headers.get("authorization")
+    
+    if (!token) {
+      return NextResponse.json({ error: "No token provided" }, { status: 401 })
     }
 
-    const token = authHeader.slice(7)
-
-    let userId: string
-    try {
-      const userInfo = await validateTokenWithCognito(token)
-      userId = userInfo.sub
-    } catch (error) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 })
-    }
-
-    const creditsInfo = await getUserCreditsInfo(userId)
-
-    if (!creditsInfo) {
-      return NextResponse.json({
-        credits: 0,
-        totalMessages: 0,
-      })
-    }
-
-    return NextResponse.json({
-      credits: creditsInfo.credits,
-      totalMessages: creditsInfo.total_messages,
-      userId: creditsInfo.user_id,
+    const response = await fetch(`${BACKEND_URL}/api/credits`, {
+      headers: {
+        Authorization: token,
+      },
     })
+
+    if (!response.ok) {
+      const error = await response.json()
+      console.log("[Frontend API] Credits fetch error:", error)
+      return NextResponse.json(error, { status: response.status })
+    }
+
+    const data = await response.json()
+    console.log("[Frontend API] Credits fetched successfully:", data)
+    return NextResponse.json(data)
   } catch (error) {
-    console.error("[Credits API Error]:", error)
-    return NextResponse.json({ error: "Error fetching credits" }, { status: 500 })
+    console.error("[Frontend API] Credits fetch error:", error)
+    return NextResponse.json({ error: "Failed to fetch credits" }, { status: 500 })
   }
 }

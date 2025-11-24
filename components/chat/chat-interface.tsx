@@ -14,7 +14,7 @@ export function ChatInterface() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [user, setUser] = useState<CognitoUser | null>(null)
   const [authModalOpen, setAuthModalOpen] = useState(false)
-  const [credentials, setCredentials] = useState(1000)
+  const [credentials, setCredentials] = useState<number | null>(null)
 
   useEffect(() => {
     const token = localStorage.getItem("access_token")
@@ -23,6 +23,7 @@ export function ChatInterface() {
     } else {
       loadUserInfo()
       loadChatsFromS3()
+      loadCredits()
     }
   }, [])
 
@@ -46,8 +47,19 @@ export function ChatInterface() {
       if (response.ok) {
         const data = await response.json()
         console.log("[v0] Loaded chats from S3:", data.chats)
-        setChats(data.chats)
-        console.log(`[v0] Successfully loaded ${data.chats.length} chats`)
+
+        const transformedChats = data.chats.map((chat: any) => ({
+          id: chat.id, // Use chat.id from backend
+          title: chat.title, // Use title from backend
+          messages: chat.messages || [],
+          createdAt: new Date(chat.createdAt),
+          userId: chat.userId,
+        }))
+
+        const sortedChats = transformedChats.sort((a: Chat, b: Chat) => b.createdAt.getTime() - a.createdAt.getTime())
+
+        setChats(sortedChats)
+        console.log(`[v0] Successfully loaded ${sortedChats.length} chats`)
       } else {
         const error = await response.text()
         console.error("[v0] Failed to load chats:", error)
@@ -61,6 +73,7 @@ export function ChatInterface() {
     try {
       const token = localStorage.getItem("access_token")
       const response = await fetch("/api/auth/validate", {
+        method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       })
       if (response.ok) {
@@ -69,6 +82,23 @@ export function ChatInterface() {
       }
     } catch (error) {
       console.error("Error loading user info:", error)
+    }
+  }
+
+  const loadCredits = async () => {
+    try {
+      const token = localStorage.getItem("access_token")
+      const response = await fetch("/api/credits", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        console.log("[v0] Loaded credits:", data.credits)
+        setCredentials(data.credits)
+      }
+    } catch (error) {
+      console.error("Error loading credits:", error)
+      setCredentials(50) // Fallback
     }
   }
 
@@ -106,12 +136,49 @@ export function ChatInterface() {
     setMessages([])
   }
 
-  const handleLoadChat = (chatId: string) => {
-    const chat = chats.find((c) => c.id === chatId)
-    if (chat) {
-      setActiveChatId(chatId)
-      setMessages(chat.messages)
-      setSidebarOpen(false)
+  const handleLoadChat = async (chatId: string) => {
+    try {
+      if (!chatId) {
+        console.error("[v0] Cannot load chat: chatId is undefined")
+        return
+      }
+
+      const localChat = chats.find((c) => c.id === chatId)
+      if (localChat && localChat.messages.length > 0) {
+        console.log("[v0] Loading chat from local state:", chatId)
+        setActiveChatId(chatId)
+        setMessages(localChat.messages)
+        setSidebarOpen(false)
+        return
+      }
+
+      console.log("[v0] Loading chat from server:", chatId)
+      const token = localStorage.getItem("access_token")
+
+      const response = await fetch(`/api/chats/${chatId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+
+      if (response.ok) {
+        const chatData = await response.json()
+        console.log("[v0] Chat data loaded:", chatData)
+
+        const loadedMessages = (chatData.messages || []).map((msg: any) => ({
+          id: msg.id || Date.now().toString(),
+          role: msg.role,
+          content: msg.content,
+          timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+        }))
+
+        setActiveChatId(chatId)
+        setMessages(loadedMessages)
+        setSidebarOpen(false)
+      } else {
+        const errorData = await response.json()
+        console.error("[v0] Failed to load chat:", errorData)
+      }
+    } catch (error) {
+      console.error("[v0] Error loading chat:", error)
     }
   }
 
@@ -132,7 +199,7 @@ export function ChatInterface() {
       currentChatId = newChatId
     }
 
-    if (credentials <= 0) {
+    if (credentials === null || credentials <= 0) {
       alert("No tienes créditos disponibles. Por favor mejora tu plan.")
       return
     }
@@ -144,28 +211,36 @@ export function ChatInterface() {
       timestamp: new Date(),
     }
 
-    setMessages((prev) => [...prev, userMessage])
+    const currentMessages = [...messages, userMessage]
+    setMessages(currentMessages)
     setLoading(true)
 
+    const thinkingMessageId = `thinking-${Date.now()}`
+    const thinkingStartTime = Date.now()
+    let thinkingInterval: NodeJS.Timeout | null = null
+
+    const thinkingMessage: ChatMessage = {
+      id: thinkingMessageId,
+      role: "assistant",
+      content: "Pensando 0.0 s",
+      timestamp: new Date(),
+    }
+    setMessages((prev) => [...prev, thinkingMessage])
+
+    thinkingInterval = setInterval(() => {
+      const elapsed = ((Date.now() - thinkingStartTime) / 1000).toFixed(1)
+      setMessages((prev) =>
+        prev.map((msg) => (msg.id === thinkingMessageId ? { ...msg, content: `Pensando ${elapsed} s` } : msg)),
+      )
+    }, 100)
+
     try {
-      const thinkingDuration = Math.random() * 3000 + 2000
-      const thinkingMessage: ChatMessage = {
-        id: `thinking-${Date.now()}`,
-        role: "assistant",
-        content: `Pensando... (${(thinkingDuration / 1000).toFixed(2)}s)`,
-        isThinking: true,
-        timestamp: new Date(),
-      }
+      const messagesForBackend = currentMessages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      }))
 
-      setMessages((prev) => [...prev, thinkingMessage])
-      await new Promise((resolve) => setTimeout(resolve, thinkingDuration))
-
-      const conversationHistory = messages
-        .filter((m) => !m.isThinking)
-        .map((m) => ({
-          role: m.role === "user" ? "user" : "model",
-          text: m.content,
-        }))
+      console.log("[v0] Sending messages to backend:", messagesForBackend.length)
 
       const token = localStorage.getItem("access_token")
       const response = await fetch("/api/chat", {
@@ -175,59 +250,141 @@ export function ChatInterface() {
           Authorization: `Bearer ${token || "demo-token"}`,
         },
         body: JSON.stringify({
-          message: text,
-          conversationHistory,
+          messages: messagesForBackend,
         }),
       })
+
+      console.log("[v0] Response status:", response.status)
 
       if (!response.ok) {
         throw new Error("Error en la respuesta del servidor")
       }
 
-      const data = await response.json()
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
 
-      const botMessage: ChatMessage = {
-        id: Date.now().toString(),
-        role: "assistant",
-        content: data.message,
-        timestamp: new Date(),
+      if (!reader) {
+        throw new Error("No se pudo leer la respuesta")
       }
 
-      setMessages((prev) => {
-        const filtered = prev.filter((m) => !m.isThinking)
-        return [...filtered, botMessage]
-      })
+      if (thinkingInterval) {
+        clearInterval(thinkingInterval)
+      }
 
-      setCredentials((prev) => Math.max(0, prev - 1))
+      const assistantMessageId = (Date.now() + 1).toString()
+      let fullContent = ""
 
-      const updatedMessages = [...messages.filter((m) => !m.isThinking), userMessage, botMessage]
+      setMessages((prev) => [
+        ...prev.filter((m) => m.id !== thinkingMessageId),
+        {
+          id: assistantMessageId,
+          role: "assistant",
+          content: "",
+          timestamp: new Date(),
+        },
+      ])
+
+      console.log("[v0] Starting to read stream...")
+
+      let buffer = ""
+      let chunkCount = 0
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) {
+          console.log("[v0] Stream complete. Total chunks:", chunkCount)
+          break
+        }
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n")
+        buffer = lines.pop() || ""
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6)
+            if (data === "[DONE]") {
+              console.log("[v0] Received [DONE] signal")
+              continue
+            }
+
+            try {
+              const parsed = JSON.parse(data)
+              if (parsed.content) {
+                chunkCount++
+                fullContent += parsed.content
+                console.log("[v0] Chunk", chunkCount, "- Length:", fullContent.length)
+
+                setMessages((prevMessages) => {
+                  return prevMessages.map((msg) =>
+                    msg.id === assistantMessageId
+                      ? {
+                          ...msg,
+                          content: fullContent,
+                          timestamp: new Date(), // Force re-render
+                        }
+                      : msg,
+                  )
+                })
+              }
+              if (parsed.error) {
+                console.error("[v0] Stream error:", parsed.error)
+                throw new Error(parsed.error)
+              }
+            } catch (e) {
+              console.error("[v0] Parse error:", e, "Line:", line)
+            }
+          }
+        }
+      }
+
+      console.log("[v0] Final content length:", fullContent.length)
+
+      await loadCredits()
+
+      const finalMessages = [
+        ...currentMessages,
+        {
+          id: assistantMessageId,
+          role: "assistant" as const,
+          content: fullContent,
+          timestamp: new Date(),
+        },
+      ]
 
       setChats((prev) =>
         prev.map((chat) =>
           chat.id === currentChatId
             ? {
                 ...chat,
-                messages: updatedMessages,
+                messages: finalMessages,
                 title: chat.title === "Nuevo Chat" ? text.substring(0, 30) : chat.title,
               }
             : chat,
         ),
       )
 
-      await saveChatToS3(currentChatId, updatedMessages)
+      await saveChatToS3(currentChatId, finalMessages)
     } catch (error) {
-      console.error("Error sending message:", error)
-      const errorMessage: ChatMessage = {
-        id: Date.now().toString(),
-        role: "assistant",
-        content: "Lo siento, ocurrió un error al procesar tu mensaje.",
-        timestamp: new Date(),
+      console.error("[v0] Error sending message:", error)
+
+      if (thinkingInterval) {
+        clearInterval(thinkingInterval)
       }
-      setMessages((prev) => {
-        const filtered = prev.filter((m) => !m.isThinking)
-        return [...filtered, errorMessage]
-      })
+
+      setMessages((prev) => [
+        ...prev.filter((m) => m.id !== thinkingMessageId),
+        {
+          id: Date.now().toString(),
+          role: "assistant",
+          content: "Lo siento, ocurrió un error al procesar tu mensaje.",
+          timestamp: new Date(),
+        },
+      ])
     } finally {
+      if (thinkingInterval) {
+        clearInterval(thinkingInterval)
+      }
       setLoading(false)
     }
   }
@@ -240,6 +397,7 @@ export function ChatInterface() {
           setAuthModalOpen(false)
           loadUserInfo()
           loadChatsFromS3()
+          loadCredits()
         }}
       />
     )
@@ -255,7 +413,7 @@ export function ChatInterface() {
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
         user={user}
-        credentials={credentials}
+        credentials={credentials ?? 0}
       />
       <ChatArea
         messages={messages}

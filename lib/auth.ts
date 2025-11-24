@@ -1,3 +1,5 @@
+const BACKEND_URL = '/api' // Llamar a las rutas API locales de Next.js
+
 export const getCognitoConfig = () => {
   return {
     region: process.env.NEXT_PUBLIC_COGNITO_REGION,
@@ -25,10 +27,10 @@ export const getAuthorizationUrl = () => {
   }
 
   const params = new URLSearchParams({
-    client_id: config.clientId,
+    client_id: config.clientId || '',
     response_type: "code",
     scope: "openid email phone",
-    redirect_uri: config.redirectUri,
+    redirect_uri: config.redirectUri || '',
     state: state,
     nonce: nonce,
   })
@@ -51,27 +53,46 @@ export const getAuthorizationUrl = () => {
 export const getLogoutUrl = () => {
   const config = getCognitoConfig()
   const params = new URLSearchParams({
-    client_id: config.clientId,
-    logout_uri: config.logoutUri,
+    client_id: config.clientId || '',
+    logout_uri: config.logoutUri || '',
   })
   return `${config.domain}/logout?${params}`
 }
 
-// Exchange authorization code for tokens
+// Exchange authorization code for tokens via backend
 export const exchangeCodeForToken = async (code: string) => {
   try {
-    const response = await fetch("/api/auth/callback", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code }),
+    console.log('[v0] Exchanging code for token via API route...')
+    
+    // Llamar a la ruta API local de Next.js (no directamente al backend)
+    const response = await fetch(`${BACKEND_URL}/auth/callback?code=${encodeURIComponent(code)}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
     })
-    if (!response.ok) throw new Error("Token exchange failed")
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      console.error('[v0] Token exchange error:', errorData)
+      throw new Error(errorData.error || 'Failed to exchange code')
+    }
+
     const data = await response.json()
-    localStorage.setItem("access_token", data.access_token)
-    localStorage.setItem("id_token", data.id_token)
+    console.log('[v0] Token exchange successful')
+    
+    // Store tokens
+    if (typeof window !== "undefined") {
+      localStorage.setItem("access_token", data.access_token)
+      localStorage.setItem("id_token", data.id_token)
+      if (data.refresh_token) {
+        localStorage.setItem("refresh_token", data.refresh_token)
+      }
+    }
+    
     return data
   } catch (error) {
-    console.error("[v0] Token exchange error:", error)
+    console.error('[v0] Token exchange error:', error)
     throw error
   }
 }
@@ -80,13 +101,28 @@ export const exchangeCodeForToken = async (code: string) => {
 export const validateToken = async (token: string) => {
   try {
     if (!token) return null
-    const response = await fetch("/api/auth/validate", {
-      headers: { Authorization: `Bearer ${token}` },
+    
+    console.log('[v0] Validating token with API route...')
+    
+    // Llamar a la ruta API local de Next.js (no directamente al backend)
+    const response = await fetch(`${BACKEND_URL}/auth/validate`, {
+      method: 'POST',
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
     })
-    if (!response.ok) return null
-    return await response.json()
+    
+    if (!response.ok) {
+      console.error('[v0] Token validation failed')
+      return null
+    }
+    
+    const data = await response.json()
+    console.log('[v0] Token validated successfully')
+    return data
   } catch (error) {
-    console.error("[v0] Token validation error:", error)
+    console.error('[v0] Token validation error:', error)
     return null
   }
 }
@@ -101,7 +137,7 @@ export const validateTokenWithCognito = async (token: string) => {
       throw new Error("Invalid token format")
     }
 
-    const payload = JSON.parse(Buffer.from(parts[1], "base64").toString())
+    const payload = JSON.parse(atob(parts[1]))
 
     // Verify token with Cognito UserInfo endpoint
     const response = await fetch(`${config.domain}/oauth2/userInfo`, {
@@ -136,8 +172,10 @@ export const getToken = () => {
 
 // Clear tokens on logout
 export const clearTokens = () => {
+  if (typeof window === "undefined") return
   localStorage.removeItem("access_token")
   localStorage.removeItem("id_token")
+  localStorage.removeItem("refresh_token")
   sessionStorage.removeItem("cognito_nonce")
   sessionStorage.removeItem("cognito_state")
 }

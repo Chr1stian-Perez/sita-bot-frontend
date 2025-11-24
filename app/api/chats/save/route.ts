@@ -1,38 +1,44 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { validateTokenWithCognito } from "@/lib/auth"
-import { saveChatHistoryToS3 } from "@/lib/aws/s3"
+import { NextRequest, NextResponse } from 'next/server'
 
-export async function POST(req: NextRequest) {
+const BACKEND_URL = process.env.BACKEND_URL || 'http://10.0.2.93:8000'
+
+export async function POST(request: NextRequest) {
   try {
-    const authHeader = req.headers.get("authorization")
+    const body = await request.json()
+    const authHeader = request.headers.get('authorization')
+
     if (!authHeader) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return NextResponse.json(
+        { error: 'No authorization header' },
+        { status: 401 }
+      )
     }
 
-    const token = authHeader.replace("Bearer ", "")
-    const userData = await validateTokenWithCognito(token)
+    console.log('[Frontend API] Saving chat to backend...')
 
-    if (!userData?.sub) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 })
-    }
-
-    const { chatId, messages } = await req.json()
-
-    if (!chatId || !messages) {
-      return NextResponse.json({ error: "chatId and messages are required" }, { status: 400 })
-    }
-
-    console.log(`[API] Saving chat ${chatId} for user ${userData.sub}`)
-
-    await saveChatHistoryToS3({
-      userId: userData.sub,
-      chatId,
-      messages,
+    const response = await fetch(`${BACKEND_URL}/api/chats/save`, {
+      method: 'POST',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
     })
 
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error("[API Save Chat Error]:", error)
-    return NextResponse.json({ error: "Failed to save chat" }, { status: 500 })
+    const data = await response.json()
+
+    if (!response.ok) {
+      console.error('[Frontend API] Chat save error:', data)
+      return NextResponse.json(data, { status: response.status })
+    }
+
+    console.log('[Frontend API] Chat saved successfully')
+    return NextResponse.json(data)
+  } catch (error: any) {
+    console.error('[Frontend API] Chat save error:', error)
+    return NextResponse.json(
+      { error: 'Failed to save chat', details: error.message },
+      { status: 500 }
+    )
   }
 }

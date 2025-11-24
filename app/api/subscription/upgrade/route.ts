@@ -1,61 +1,87 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { publishUpgradeEvent } from "@/lib/aws/eventbridge"
-import { validateTokenWithCognito } from "@/lib/auth"
+import { NextRequest, NextResponse } from "next/server"
+import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda"
 
-export async function POST(request: NextRequest) {
+const lambdaClient = new LambdaClient({
+  region: process.env.AWS_REGION || "us-east-1",
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+  },
+})
+
+const PLAN_CREDITS = {
+  pro: 1000,
+  premium: 10000,
+}
+
+export async function POST(req: NextRequest) {
   try {
-    const { planType } = await request.json()
-
-    if (!["basic", "pro", "enterprise"].includes(planType)) {
-      return NextResponse.json({ error: "Invalid plan type" }, { status: 400 })
+    console.log("[Frontend API] Upgrading subscription...")
+    
+    const token = req.headers.get("authorization")
+    if (!token) {
+      return NextResponse.json({ error: "No token provided" }, { status: 401 })
     }
 
-    const authHeader = request.headers.get("authorization")
-    if (!authHeader?.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const body = await req.json()
+    const { planType } = body
+    console.log("[Frontend API] Upgrade request body:", body)
 
-    const token = authHeader.slice(7)
-
-    let userId: string
-    try {
-      const userInfo = await validateTokenWithCognito(token)
-      userId = userInfo.sub
-      console.log("[Subscription] User requesting upgrade:", userId)
-    } catch (error) {
-      console.error("[Subscription] Token validation failed:", error)
+    // Extraer userId del token JWT
+    const tokenParts = token.replace("Bearer ", "").split(".")
+    if (tokenParts.length !== 3) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
-
-    const creditsMap = {
-      basic: 1000,
-      pro: 5000,
-      enterprise: 20000,
+    
+    const payload = JSON.parse(Buffer.from(tokenParts[1], "base64").toString())
+    const userId = payload.sub || payload["cognito:username"]
+    
+    if (!userId) {
+      return NextResponse.json({ error: "Invalid token payload" }, { status: 401 })
     }
-    const creditsToAdd = creditsMap[planType as keyof typeof creditsMap]
 
-    try {
-      const eventResult = await publishUpgradeEvent({
+    console.log("[Frontend API] Upgrade request - User:", userId, "Plan:", planType)
+
+    const creditsToAdd = PLAN_CREDITS[planType as keyof typeof PLAN_CREDITS] || 2000
+    console.log("[Frontend API] Adding credits:", creditsToAdd)
+
+    // Invocar Lambda directamente
+    const lambdaPayload = {
+      detail: {
         userId,
-        planType,
         creditsToAdd,
-        timestamp: new Date().toISOString(),
-      })
-
-      console.log("[Subscription] Event published successfully:", eventResult.eventId)
-
-      return NextResponse.json({
-        success: true,
-        message: `Plan upgrade to ${planType} initiated. Your credits will be updated shortly.`,
-        eventId: eventResult.eventId,
-        creditsToAdd,
-      })
-    } catch (eventError) {
-      console.error("[Subscription EventBridge Error]:", eventError)
-      return NextResponse.json({ error: "Failed to process upgrade request" }, { status: 500 })
+      },
     }
+
+    console.log("[Frontend API] Invoking Lambda with payload:", lambdaPayload)
+
+    const command = new InvokeCommand({
+      FunctionName: "actualizar-usuario",
+      Payload: JSON.stringify(lambdaPayload),
+    })
+
+    const response = await lambdaClient.send(command)
+    const result = JSON.parse(new TextDecoder().decode(response.Payload))
+
+    console.log("[Frontend API] Lambda response:", result)
+
+    if (result.statusCode !== 200) {
+      return NextResponse.json(
+        { error: "Failed to update credits", details: result },
+        { status: result.statusCode }
+      )
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Créditos actualizados exitosamente",
+      credits: JSON.parse(result.body).credits,
+    })
   } catch (error) {
-    console.error("[Subscription Upgrade Error]:", error)
-    return NextResponse.json({ error: "Error processing upgrade" }, { status: 500 })
+    console.error("[Frontend API] Upgrade error:", error)
+    return NextResponse.json(
+      { error: "Failed to upgrade subscription", details: String(error) },
+      { status: 500 }
+    )
   }
 }
