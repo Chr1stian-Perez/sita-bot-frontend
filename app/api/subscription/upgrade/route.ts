@@ -11,7 +11,7 @@ const lambdaClient = new LambdaClient({
 
 const PLAN_CREDITS = {
   pro: 1000,
-  premium: 10000,
+  enterprise: 10000,
 }
 
 export async function POST(req: NextRequest) {

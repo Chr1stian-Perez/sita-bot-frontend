@@ -35,7 +35,7 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
 
       if (response.ok) {
         await response.json()
-        alert("¡Plan mejorado! Lambda actualizará tus créditos en breve.")
+        alert("¡Plan mejorado! Se actualizará tus créditos en breve.")
         onOpenChange(false)
       } else {
         alert("Error al mejorar el plan")
@@ -54,11 +54,11 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
       price: "$0",
       period: "USD / mes",
       description: "Mira lo que la IA puede hacer",
-      features: ["100 créditos/mes", "Soporte por email", "Historial de chats limitado", "Generación básica"],
+      features: ["25 créditos/mes", "Soporte por email", "Historial de chats limitado", "Generación básica"],
       buttonText: "Tu plan actual",
       highlight: false,
       recommended: false,
-      credits: 100
+      credits: 25
     },
     {
       name: "Pro",
