@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
-import { Send } from "lucide-react"
+import { Send, Mic, MicOff } from "lucide-react"
 import { MessageBubble } from "./message-bubble"
 import type { ChatMessage } from "@/lib/types"
 
@@ -16,11 +16,47 @@ interface ChatAreaProps {
 
 export function ChatArea({ messages, onSendMessage, loading, onToggleSidebar }: ChatAreaProps) {
   const [input, setInput] = useState("")
+  const [isRecording, setIsRecording] = useState(false)
+  const [recognition, setRecognition] = useState<any>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+
+      if (SpeechRecognition) {
+        const recognitionInstance = new SpeechRecognition()
+        recognitionInstance.continuous = false
+        recognitionInstance.interimResults = false
+        recognitionInstance.lang = "es-ES"
+
+        recognitionInstance.onresult = (event: any) => {
+          const transcript = event.results[0][0].transcript
+          setInput((prev) => prev + (prev ? " " : "") + transcript)
+          setIsRecording(false)
+        }
+
+        recognitionInstance.onerror = (event: any) => {
+          console.error("Speech recognition error:", event.error)
+          setIsRecording(false)
+
+          if (event.error === "not-allowed") {
+            alert("Por favor permite el acceso al micrófono en la configuración de tu navegador.")
+          }
+        }
+
+        recognitionInstance.onend = () => {
+          setIsRecording(false)
+        }
+
+        setRecognition(recognitionInstance)
+      }
+    }
+  }, [])
 
   const handleSend = () => {
     if (input.trim() && !loading) {
@@ -33,6 +69,26 @@ export function ChatArea({ messages, onSendMessage, loading, onToggleSidebar }: 
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       handleSend()
+    }
+  }
+
+  const toggleRecording = () => {
+    if (!recognition) {
+      alert("Tu navegador no soporta reconocimiento de voz. Por favor usa Chrome, Edge o Safari.")
+      return
+    }
+
+    if (isRecording) {
+      recognition.stop()
+      setIsRecording(false)
+    } else {
+      try {
+        recognition.start()
+        setIsRecording(true)
+      } catch (error) {
+        console.error("Error starting recognition:", error)
+        setIsRecording(false)
+      }
     }
   }
 
@@ -71,6 +127,15 @@ export function ChatArea({ messages, onSendMessage, loading, onToggleSidebar }: 
             />
           </div>
           <button
+            onClick={toggleRecording}
+            disabled={loading}
+            className={`flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-[#00ffaa] to-[#0ea5e9] hover:from-[#00e5a0] hover:to-[#0284c7] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 hover:scale-105 hover:shadow-[0_0_20px_rgba(0,255,170,0.5)] ${
+              isRecording ? "animate-pulse" : ""
+            }`}
+          >
+            {isRecording ? <MicOff size={20} className="text-white" /> : <Mic size={20} className="text-white" />}
+          </button>
+          <button
             onClick={handleSend}
             disabled={loading || !input.trim()}
             className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-[#00ffaa] to-[#0ea5e9] hover:from-[#00e5a0] hover:to-[#0284c7] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 hover:scale-105 hover:shadow-[0_0_20px_rgba(0,255,170,0.5)]"
@@ -78,6 +143,9 @@ export function ChatArea({ messages, onSendMessage, loading, onToggleSidebar }: 
             <Send size={20} className="text-white" />
           </button>
         </div>
+        {isRecording && (
+          <p className="text-xs text-[#00ffaa] mt-2 text-center animate-pulse">Escuchando... Habla ahora</p>
+        )}
       </div>
     </div>
   )
