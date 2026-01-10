@@ -33,11 +33,12 @@ export function UsersManagement() {
         },
       })
       
-      console.log(" Users response status:", response.status)
+      console.log("[v0] Users response status:", response.status)
       
       if (response.ok) {
         const data = await response.json()
-        console.log(" Users data:", data)
+        console.log("[v0] Users data:", data)
+        console.log("[v0] First user:", data.users?.[0]) // <-- AGREGAR ESTA LÍNEA
         setUsers(data.users)
       }
     } catch (error) {
@@ -49,16 +50,23 @@ export function UsersManagement() {
 
   const updateCredits = async (userId: string) => {
     try {
+      const token = localStorage.getItem("access_token")
+
       const response = await fetch(`/api/admin/users/${userId}/credits`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ credits: parseInt(newCredits) }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ credits: Number.parseInt(newCredits) }),
       })
 
       if (response.ok) {
         fetchUsers()
         setEditingUserId(null)
         setNewCredits("")
+      } else {
+        console.error("Error updating credits:", await response.text())
       }
     } catch (error) {
       console.error("Error updating credits:", error)

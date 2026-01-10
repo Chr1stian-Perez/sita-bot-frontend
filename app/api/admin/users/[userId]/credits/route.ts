@@ -1,13 +1,14 @@
-import { NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://10.0.2.93:8000"
 
-export async function PATCH(request: Request, { params }: { params: { userId: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ userId: string }> }) {
   try {
-    const token = request.headers.get("authorization")
-    const body = await request.json()
+    const { userId } = await params
+    const token = req.headers.get("authorization")
+    const body = await req.json()
 
-    const response = await fetch(`${BACKEND_URL}/api/admin/users/${params.userId}/credits`, {
+    const response = await fetch(`${BACKEND_URL}/api/admin/users/${userId}/credits`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
@@ -17,13 +18,13 @@ export async function PATCH(request: Request, { params }: { params: { userId: st
     })
 
     if (!response.ok) {
-      return NextResponse.json({ error: "Failed to update credits" }, { status: response.status })
+      throw new Error("Failed to update user credits")
     }
 
     const data = await response.json()
     return NextResponse.json(data)
   } catch (error) {
-    console.error("[API] Update credits error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error("[Admin User Credits] Error:", error)
+    return NextResponse.json({ error: "Failed to update user credits" }, { status: 500 })
   }
 }

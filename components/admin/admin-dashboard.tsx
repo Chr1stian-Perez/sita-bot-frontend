@@ -4,46 +4,65 @@ import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DashboardOverview } from "./dashboard-overview"
 import { UsersManagement } from "./users-management"
-import { PlansManagement } from "./plans-management"
 import { SystemLogs } from "./system-logs"
 import { Button } from "@/components/ui/button"
-import { Home } from "lucide-react"
+import { Shield, Users, FileText, LogOut, LayoutDashboard } from "lucide-react"
+import { useRouter } from "next/navigation"
 
 export function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState("overview")
+  const [activeTab, setActiveTab] = useState("dashboard")
+  const router = useRouter()
+
+  const handleLogout = () => {
+    router.push("/")
+  }
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-3xl font-bold">Panel de Administrador</h1>
-          <Button variant="outline" onClick={() => (window.location.href = "/")}>
-            <Home className="w-4 h-4 mr-2" />
+    <div className="min-h-screen bg-background">
+      <header className="border-b bg-card">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <Shield className="w-6 h-6 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold">Panel de Administrador</h1>
+              <p className="text-sm text-muted-foreground">Sistema SITA Bot</p>
+            </div>
+          </div>
+          <Button variant="outline" onClick={handleLogout}>
+            <LogOut className="w-4 h-4 mr-2" />
             Volver al Chat
           </Button>
         </div>
+      </header>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="overview">Métricas</TabsTrigger>
-            <TabsTrigger value="users">Usuarios</TabsTrigger>
-            <TabsTrigger value="plans">Planes</TabsTrigger>
-            <TabsTrigger value="logs">Logs</TabsTrigger>
+      <div className="container mx-auto px-4 py-8">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:inline-grid">
+            <TabsTrigger value="dashboard" className="gap-2">
+              <LayoutDashboard className="w-4 h-4" />
+              <span className="hidden sm:inline">Métricas</span>
+            </TabsTrigger>
+            <TabsTrigger value="users" className="gap-2">
+              <Users className="w-4 h-4" />
+              <span className="hidden sm:inline">Usuarios</span>
+            </TabsTrigger>
+            <TabsTrigger value="logs" className="gap-2">
+              <FileText className="w-4 h-4" />
+              <span className="hidden sm:inline">Logs</span>
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview">
+          <TabsContent value="dashboard" className="space-y-6">
             <DashboardOverview />
           </TabsContent>
 
-          <TabsContent value="users">
+          <TabsContent value="users" className="space-y-6">
             <UsersManagement />
           </TabsContent>
 
-          <TabsContent value="plans">
-            <PlansManagement />
-          </TabsContent>
-
-          <TabsContent value="logs">
+          <TabsContent value="logs" className="space-y-6">
             <SystemLogs />
           </TabsContent>
         </Tabs>
