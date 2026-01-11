@@ -5,8 +5,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DashboardOverview } from "./dashboard-overview"
 import { UsersManagement } from "./users-management"
 import { SystemLogs } from "./system-logs"
+import { KnowledgeBaseManagement } from "./knowledge-base-management"
 import { Button } from "@/components/ui/button"
-import { Shield, Users, FileText, LogOut, LayoutDashboard } from "lucide-react"
+import { Shield, Users, FileText, LogOut, LayoutDashboard, BookOpen } from "lucide-react"
 import { useRouter } from "next/navigation"
 
 export function AdminDashboard() {
@@ -39,7 +40,7 @@ export function AdminDashboard() {
 
       <div className="container mx-auto px-4 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:inline-grid">
+          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
             <TabsTrigger value="dashboard" className="gap-2">
               <LayoutDashboard className="w-4 h-4" />
               <span className="hidden sm:inline">Métricas</span>
@@ -47,6 +48,10 @@ export function AdminDashboard() {
             <TabsTrigger value="users" className="gap-2">
               <Users className="w-4 h-4" />
               <span className="hidden sm:inline">Usuarios</span>
+            </TabsTrigger>
+            <TabsTrigger value="knowledge" className="gap-2">
+              <BookOpen className="w-4 h-4" />
+              <span className="hidden sm:inline">Base de Conocimiento</span>
             </TabsTrigger>
             <TabsTrigger value="logs" className="gap-2">
               <FileText className="w-4 h-4" />
@@ -60,6 +65,10 @@ export function AdminDashboard() {
 
           <TabsContent value="users" className="space-y-6">
             <UsersManagement />
+          </TabsContent>
+
+          <TabsContent value="knowledge" className="space-y-6">
+            <KnowledgeBaseManagement />
           </TabsContent>
 
           <TabsContent value="logs" className="space-y-6">
